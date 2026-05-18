@@ -196,6 +196,76 @@ app.post("/api/analytics/app-open", async (req, res) => {
     });
   }
 });
+app.get("/api/admin/stats", async (req, res) => {
+  try {
+    const now = new Date();
+
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const currentDay = now.getDate();
+
+    const devicesSnapshot = await admin
+      .firestore()
+      .collection("analytics_devices")
+      .get();
+
+    const todayOpensSnapshot = await admin
+      .firestore()
+      .collection("analytics_app_opens")
+      .where("year", "==", currentYear)
+      .where("month", "==", currentMonth)
+      .where("day", "==", currentDay)
+      .get();
+
+    const monthOpensSnapshot = await admin
+      .firestore()
+      .collection("analytics_app_opens")
+      .where("year", "==", currentYear)
+      .where("month", "==", currentMonth)
+      .get();
+
+    const yearOpensSnapshot = await admin
+      .firestore()
+      .collection("analytics_app_opens")
+      .where("year", "==", currentYear)
+      .get();
+
+    const adsSnapshot = await admin
+      .firestore()
+      .collection("ads")
+      .get();
+
+    let featuredAdsCount = 0;
+
+    adsSnapshot.forEach((doc) => {
+      const ad = doc.data();
+
+      if (ad.isFeatured === true) {
+        featuredAdsCount++;
+      }
+    });
+
+    return res.json({
+      success: true,
+      stats: {
+        estimatedDownloads: devicesSnapshot.size,
+        appOpensToday: todayOpensSnapshot.size,
+        appOpensThisMonth: monthOpensSnapshot.size,
+        appOpensThisYear: yearOpensSnapshot.size,
+        totalAds: adsSnapshot.size,
+        featuredAds: featuredAdsCount,
+      },
+    });
+  } catch (error) {
+    console.error("Stats error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load stats",
+      error: error.message,
+    });
+  }
+});
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
