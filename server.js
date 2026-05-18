@@ -153,7 +153,49 @@ app.post("/api/upload-image", upload.single("image"), async (req, res) => {
     });
   }
 });
+app.post("/api/analytics/app-open", async (req, res) => {
+  try {
+    const { deviceId } = req.body;
 
+    if (!deviceId) {
+      return res.status(400).json({
+        success: false,
+        message: "deviceId is required",
+      });
+    }
+
+    const now = new Date();
+
+    await admin.firestore().collection("analytics_app_opens").add({
+      deviceId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      year: now.getFullYear(),
+      month: now.getMonth() + 1,
+      day: now.getDate(),
+    });
+
+    await admin.firestore().collection("analytics_devices").doc(deviceId).set(
+      {
+        deviceId,
+        lastOpenAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return res.json({
+      success: true,
+      message: "App open recorded",
+    });
+  } catch (error) {
+    console.error("Analytics error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to record app open",
+      error: error.message,
+    });
+  }
+});
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
