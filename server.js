@@ -266,6 +266,69 @@ app.get("/api/admin/stats", async (req, res) => {
     });
   }
 });
+app.get("/api/app-config", async (req, res) => {
+  try {
+    const configDoc = await admin
+      .firestore()
+      .collection("app_config")
+      .doc("main")
+      .get();
+
+    if (!configDoc.exists) {
+      return res.json({
+        success: true,
+        config: {
+          isAppEnabled: true,
+          maintenanceMessage: "",
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      config: {
+        isAppEnabled: configDoc.data().isAppEnabled !== false,
+        maintenanceMessage: configDoc.data().maintenanceMessage || "",
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load app config",
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/admin/app-config", async (req, res) => {
+  try {
+    const { isAppEnabled, maintenanceMessage } = req.body;
+
+    await admin
+      .firestore()
+      .collection("app_config")
+      .doc("main")
+      .set(
+        {
+          isAppEnabled: isAppEnabled !== false,
+          maintenanceMessage: maintenanceMessage || "",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    return res.json({
+      success: true,
+      message: "App config updated successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update app config",
+      error: error.message,
+    });
+  }
+});
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
