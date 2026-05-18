@@ -2,6 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
+const cloudinary = require("cloudinary").v2;
 require("dotenv").config();
 
 let serviceAccount;
@@ -16,7 +18,14 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(express.json());
@@ -25,7 +34,46 @@ app.get("/", (req, res) => {
   res.json({
     message: "Khaberni Backend is running",
     firebase: "connected",
+    cloudinary: "ready",
   });
+});
+
+app.post("/api/admin/login", async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "Password is required",
+      });
+    }
+
+    if (password !== process.env.ADMIN_PASSWORD) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin password",
+      });
+    }
+
+    const token = jwt.sign(
+      { role: "admin" },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.json({
+      success: true,
+      message: "Login successful",
+      token,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Login failed",
+      error: error.message,
+    });
+  }
 });
 
 app.post("/api/notifications/send", async (req, res) => {
@@ -65,39 +113,42 @@ app.post("/api/notifications/send", async (req, res) => {
     });
   }
 });
-app.post("/api/admin/login", async (req, res) => {
-  try {
-    const { password } = req.body;
 
-    if (!password) {
+app.post("/api/upload-image", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "Password is required",
+        message: "No image uploaded",
       });
     }
 
-    if (password !== process.env.ADMIN_PASSWORD) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid admin password",
-      });
-    }
+    const uploadResult = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "khaberni_ads",
+          resource_type: "image",
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
 
-    const token = jwt.sign(
-      { role: "admin" },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+      stream.end(req.file.buffer);
+    });
 
     return res.json({
       success: true,
-      message: "Login successful",
-      token,
+      message: "Image uploaded successfully",
+      imageUrl: uploadResult.secure_url,
     });
   } catch (error) {
+    console.error("Upload error:", error);
+
     return res.status(500).json({
       success: false,
-      message: "Login failed",
+      message: "Failed to upload image",
       error: error.message,
     });
   }
