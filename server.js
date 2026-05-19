@@ -283,6 +283,7 @@ app.get("/api/app-config", async (req, res) => {
           minimumRequiredVersion: 1,
           latestVersion: 1,
           updateMessage: "يرجى تحديث التطبيق إلى آخر نسخة للاستمرار.",
+          updateUrl: "",
         },
       });
     }
@@ -299,6 +300,7 @@ app.get("/api/app-config", async (req, res) => {
         updateMessage:
           configData.updateMessage ||
           "يرجى تحديث التطبيق إلى آخر نسخة للاستمرار.",
+        updateUrl: configData.updateUrl || "",
       },
     });
   } catch (error) {
@@ -318,6 +320,7 @@ app.post("/api/admin/app-config", async (req, res) => {
       minimumRequiredVersion,
       latestVersion,
       updateMessage,
+      updateUrl,
     } = req.body;
 
     await admin
@@ -332,6 +335,7 @@ app.post("/api/admin/app-config", async (req, res) => {
           latestVersion: Number(latestVersion) || 1,
           updateMessage:
             updateMessage || "يرجى تحديث التطبيق إلى آخر نسخة للاستمرار.",
+          updateUrl: updateUrl || "",
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true }
