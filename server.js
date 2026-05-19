@@ -153,6 +153,7 @@ app.post("/api/upload-image", upload.single("image"), async (req, res) => {
     });
   }
 });
+
 app.post("/api/analytics/app-open", async (req, res) => {
   try {
     const { deviceId } = req.body;
@@ -196,6 +197,7 @@ app.post("/api/analytics/app-open", async (req, res) => {
     });
   }
 });
+
 app.get("/api/admin/stats", async (req, res) => {
   try {
     const now = new Date();
@@ -230,10 +232,7 @@ app.get("/api/admin/stats", async (req, res) => {
       .where("year", "==", currentYear)
       .get();
 
-    const adsSnapshot = await admin
-      .firestore()
-      .collection("ads")
-      .get();
+    const adsSnapshot = await admin.firestore().collection("ads").get();
 
     let featuredAdsCount = 0;
 
@@ -266,6 +265,7 @@ app.get("/api/admin/stats", async (req, res) => {
     });
   }
 });
+
 app.get("/api/app-config", async (req, res) => {
   try {
     const configDoc = await admin
@@ -280,15 +280,25 @@ app.get("/api/app-config", async (req, res) => {
         config: {
           isAppEnabled: true,
           maintenanceMessage: "",
+          minimumRequiredVersion: 1,
+          latestVersion: 1,
+          updateMessage: "يرجى تحديث التطبيق إلى آخر نسخة للاستمرار.",
         },
       });
     }
 
+    const configData = configDoc.data();
+
     return res.json({
       success: true,
       config: {
-        isAppEnabled: configDoc.data().isAppEnabled !== false,
-        maintenanceMessage: configDoc.data().maintenanceMessage || "",
+        isAppEnabled: configData.isAppEnabled !== false,
+        maintenanceMessage: configData.maintenanceMessage || "",
+        minimumRequiredVersion: configData.minimumRequiredVersion || 1,
+        latestVersion: configData.latestVersion || 1,
+        updateMessage:
+          configData.updateMessage ||
+          "يرجى تحديث التطبيق إلى آخر نسخة للاستمرار.",
       },
     });
   } catch (error) {
@@ -302,7 +312,13 @@ app.get("/api/app-config", async (req, res) => {
 
 app.post("/api/admin/app-config", async (req, res) => {
   try {
-    const { isAppEnabled, maintenanceMessage } = req.body;
+    const {
+      isAppEnabled,
+      maintenanceMessage,
+      minimumRequiredVersion,
+      latestVersion,
+      updateMessage,
+    } = req.body;
 
     await admin
       .firestore()
@@ -312,6 +328,10 @@ app.post("/api/admin/app-config", async (req, res) => {
         {
           isAppEnabled: isAppEnabled !== false,
           maintenanceMessage: maintenanceMessage || "",
+          minimumRequiredVersion: Number(minimumRequiredVersion) || 1,
+          latestVersion: Number(latestVersion) || 1,
+          updateMessage:
+            updateMessage || "يرجى تحديث التطبيق إلى آخر نسخة للاستمرار.",
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -329,6 +349,7 @@ app.post("/api/admin/app-config", async (req, res) => {
     });
   }
 });
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
