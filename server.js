@@ -447,8 +447,9 @@ app.get("/api/jobs/update-currencies", async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Currencies updated successfully",
-      results,
+      message: "OK",
+      changed: results.filter((item) => item.hasChanged).length,
+      checked: results.length,
     });
   } catch (error) {
     return res.status(500).json({
