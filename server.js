@@ -5,6 +5,8 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const axios = require("axios");
+const csv = require("csv-parser");
+const { Readable } = require("stream");
 const cheerio = require("cheerio");
 require("dotenv").config();
 
@@ -466,6 +468,140 @@ app.get("/api/jobs/update-currencies", async (req, res) => {
       error: error.message,
     });
   }
+});
+app.get("/api/jobs/update-daily-sheet", async (req, res) => {
+
+  try {
+
+    const SHEET_URL =
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ7TGi4diWL6deY9jHCQIDXx3itWOuUo1BEZyIMZd-iYtRCP7R2NrID4lT5mayirzo5L7ggOtEtxbgq/pub?output=csv";
+
+    const response = await axios.get(SHEET_URL,{
+      timeout:20000
+    });
+
+    const rows = [];
+
+    await new Promise((resolve,reject)=>{
+
+      Readable
+        .from(response.data)
+        .pipe(csv())
+        .on("data",(data)=>{
+
+          rows.push(data);
+
+        })
+        .on("end",resolve)
+        .on("error",reject);
+
+    });
+
+    const today =
+      new Date()
+        .toISOString()
+        .split("T")[0];
+
+    const todayRows =
+      rows.filter(row => {
+
+        return (
+          row.date === today &&
+          row.isActive?.toLowerCase() === "true"
+        );
+
+      });
+
+    const db = admin.firestore();
+
+    let updated = 0;
+
+    for(const row of todayRows){
+
+      const sectionId =
+        row.sectionId;
+
+      const itemId =
+        row.itemId;
+
+      if(
+        !sectionId ||
+        !itemId
+      ){
+        continue;
+      }
+
+      await db
+        .collection("sections")
+        .doc(sectionId)
+        .collection("items")
+        .doc(itemId)
+        .set({
+
+          title:
+            row.title || "",
+
+          content:
+            row.content || "",
+
+          order:
+            Number(row.order)||999,
+
+          updatedAt:
+            admin.firestore.FieldValue.serverTimestamp(),
+
+          source:
+            "GoogleSheet"
+
+        },{
+          merge:true
+        });
+
+      updated++;
+
+    }
+
+    if(req.query.cron==="1"){
+
+      return res
+        .status(200)
+        .type("text/plain")
+        .send("OK");
+
+    }
+
+    return res.json({
+
+      success:true,
+      updated,
+      totalToday:
+        todayRows.length,
+      today
+
+    });
+
+  } catch(error){
+
+    console.error(error);
+
+    if(req.query.cron==="1"){
+
+      return res
+        .status(500)
+        .type("text/plain")
+        .send("ERROR");
+
+    }
+
+    return res.status(500).json({
+
+      success:false,
+      error:error.message
+
+    });
+
+  }
+
 });
 const PORT = process.env.PORT || 5000;
 
