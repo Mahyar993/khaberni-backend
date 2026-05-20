@@ -4,7 +4,6 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "postinstall": "npx puppeteer browsers install chrome",
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
@@ -13,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@puppeteer/browsers": "^3.0.3",
+    "@sparticuz/chromium": "^148.0.0",
     "axios": "^1.16.1",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
@@ -23,7 +23,7 @@
     "firebase-admin": "^13.10.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
-    "puppeteer": "^25.0.4"
+    "puppeteer-core": "^25.0.4"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

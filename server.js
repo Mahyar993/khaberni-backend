@@ -356,54 +356,45 @@ app.post("/api/admin/app-config", async (req, res) => {
   }
 });
 app.get("/api/jobs/update-sp-today", async (req, res) => {
+  let browser = null;
+
   try {
+    const puppeteer = require("puppeteer-core");
+    const chromium = require("@sparticuz/chromium");
 
-    const puppeteer = require("puppeteer")
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    });
 
-    const browser = await puppeteer.launch({
-      headless: true,
+    const page = await browser.newPage();
 
-      executablePath:
-        process.env.PUPPETEER_EXECUTABLE_PATH,
+    await page.goto("https://sp-today.com/currency/us-dollar", {
+      waitUntil: "networkidle2",
+      timeout: 60000,
+    });
 
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage"
-      ]
-    })
+    const text = await page.evaluate(() => document.body.innerText);
 
-    const page = await browser.newPage()
-
-    await page.goto(
-      "https://sp-today.com/currency/us-dollar",
-      {
-        waitUntil: "networkidle2",
-        timeout: 60000
-      }
-    )
-
-    const text =
-      await page.evaluate(() =>
-        document.body.innerText
-      )
-
-    await browser.close()
+    await browser.close();
 
     return res.json({
-      success:true,
-      preview:text.substring(0,2000)
-    })
-
-  } catch(error){
+      success: true,
+      preview: text.substring(0, 2000),
+    });
+  } catch (error) {
+    if (browser) {
+      await browser.close();
+    }
 
     return res.status(500).json({
-      success:false,
-      error:error.message
-    })
-
+      success: false,
+      error: error.message,
+    });
   }
-})
+});
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
