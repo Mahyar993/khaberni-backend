@@ -357,42 +357,52 @@ app.post("/api/admin/app-config", async (req, res) => {
 });
 app.get("/api/jobs/update-sp-today", async (req, res) => {
   try {
-    const response = await axios.get(
+
+    const puppeteer = require("puppeteer")
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox"
+      ]
+    })
+
+    const page = await browser.newPage()
+
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"
+    )
+
+    await page.goto(
       "https://sp-today.com/currency/us-dollar",
       {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-
-          "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
-
-          Referer: "https://sp-today.com/",
-
-          Origin: "https://sp-today.com",
-        },
-        timeout: 20000,
+        waitUntil: "networkidle2",
+        timeout: 60000
       }
-    );
+    )
 
-    const $ = cheerio.load(response.data);
-    const pageText = $("body").text().replace(/\s+/g, " ");
+    const pageText =
+      await page.evaluate(() => {
+        return document.body.innerText
+      })
+
+    await browser.close()
 
     return res.json({
       success: true,
-      message: "SP Today page loaded",
-      preview: pageText.substring(0, 2000),
-    });
+      preview: pageText.substring(0,2000)
+    })
+
   } catch (error) {
+
     return res.status(500).json({
-      success: false,
-      message: "Failed to load SP Today",
-      error: error.message,
-    });
+      success:false,
+      error:error.message
+    })
+
   }
-});
+})
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
