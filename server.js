@@ -362,17 +362,18 @@ app.get("/api/jobs/update-sp-today", async (req, res) => {
 
     const browser = await puppeteer.launch({
       headless: true,
+
+      executablePath:
+        process.env.PUPPETEER_EXECUTABLE_PATH,
+
       args: [
         "--no-sandbox",
-        "--disable-setuid-sandbox"
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage"
       ]
     })
 
     const page = await browser.newPage()
-
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"
-    )
 
     await page.goto(
       "https://sp-today.com/currency/us-dollar",
@@ -382,19 +383,19 @@ app.get("/api/jobs/update-sp-today", async (req, res) => {
       }
     )
 
-    const pageText =
-      await page.evaluate(() => {
-        return document.body.innerText
-      })
+    const text =
+      await page.evaluate(() =>
+        document.body.innerText
+      )
 
     await browser.close()
 
     return res.json({
-      success: true,
-      preview: pageText.substring(0,2000)
+      success:true,
+      preview:text.substring(0,2000)
     })
 
-  } catch (error) {
+  } catch(error){
 
     return res.status(500).json({
       success:false,
