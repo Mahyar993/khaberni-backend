@@ -603,6 +603,65 @@ app.get("/api/jobs/update-daily-sheet", async (req, res) => {
   }
 
 });
+app.get("/api/jobs/send-water-notifications", async (req, res) => {
+  try {
+    const db = admin.firestore();
+
+    const snapshot = await db
+      .collection("sections")
+      .doc("Water")
+      .collection("items")
+      .orderBy("order", "asc")
+      .get();
+
+    let sent = 0;
+
+    for (const doc of snapshot.docs) {
+      const item = doc.data();
+
+      const title = item.title || "";
+      const content = item.content || "";
+
+      if (!title || !content) {
+        continue;
+      }
+
+      await admin.messaging().send({
+        topic: "all",
+        notification: {
+          title: title,
+          body: content,
+        },
+        data: {
+          title: title,
+          body: content,
+        },
+      });
+
+      sent++;
+    }
+
+    if (req.query.cron === "1") {
+      return res.status(200).type("text/plain").send("OK");
+    }
+
+    return res.json({
+      success: true,
+      message: "Water notifications sent",
+      sent,
+    });
+  } catch (error) {
+    if (req.query.cron === "1") {
+      return res.status(500).type("text/plain").send("ERROR");
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send water notifications",
+      error: error.message,
+    });
+  }
+});
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
