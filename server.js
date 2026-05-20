@@ -359,15 +359,17 @@ app.get("/api/jobs/update-currencies", async (req, res) => {
   try {
     const response = await axios.get(
       "https://lirascope.syria-cloud.sy/api/v1/rates/latest?currencies=USD,EUR,TRY&lang=ar",
-      {
-        timeout: 20000,
-      }
+      { timeout: 20000 }
     );
 
     const marketRates = response.data.marketRates || [];
 
     const findRate = (currency) => {
       return marketRates.find((item) => item.currency === currency);
+    };
+
+    const multiplyRate = (value) => {
+      return Math.round(Number(value) * 100);
     };
 
     const usd = findRate("USD");
@@ -384,36 +386,69 @@ app.get("/api/jobs/update-currencies", async (req, res) => {
 
     const db = admin.firestore();
 
-    const saveCurrency = async (id, title, rate, order) => {
-      await db
+    const updateCurrency = async (id, title, rate, order) => {
+      const buy = multiplyRate(rate.buy);
+      const sell = multiplyRate(rate.sell);
+
+      const docRef = db
         .collection("sections")
         .doc("currencies")
         .collection("items")
-        .doc(id)
-        .set(
-          {
-            title,
-            content: `شراء : ${rate.buy} - بيع : ${rate.sell}`,
-            order,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            source: "LiraScope",
+        .doc(id);
+
+      const oldDoc = await docRef.get();
+      const oldContent = oldDoc.exists ? oldDoc.data().content || "" : "";
+
+      const newContent = `شراء : ${buy} - بيع : ${sell}`;
+      const hasChanged = oldContent !== newContent;
+
+      await docRef.set(
+        {
+          title,
+          content: newContent,
+          order,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastCheckedAt: admin.firestore.FieldValue.serverTimestamp(),
+          source: "LiraScope",
+          buy,
+          sell,
+        },
+        { merge: true }
+      );
+
+      if (hasChanged) {
+        await admin.messaging().send({
+          topic: "all",
+          notification: {
+            title: title,
+            body: `تحديث جديد للأسعار:\nشراء : ${buy} - بيع : ${sell}`,
           },
-          { merge: true }
-        );
+          data: {
+            title: title,
+            body: `تحديث جديد للأسعار:\nشراء : ${buy} - بيع : ${sell}`,
+          },
+        });
+      }
+
+      return {
+        id,
+        title,
+        buy,
+        sell,
+        hasChanged,
+      };
     };
 
-    await saveCurrency("dollar", "الدولار", usd, 1);
-    await saveCurrency("euro", "اليورو", eur, 2);
-    await saveCurrency("Turkish", "ليرة تركية", tryRate, 3);
+    const results = [];
+
+    results.push(await updateCurrency("dollar", "الدولار", usd, 1));
+    results.push(await updateCurrency("euro", "اليورو", eur, 2));
+    results.push(await updateCurrency("Turkish", "ليرة تركية", tryRate, 3));
 
     return res.json({
       success: true,
       message: "Currencies updated successfully",
-      data: {
-        usd,
-        eur,
-        try: tryRate,
-      },
+      results,
     });
   } catch (error) {
     return res.status(500).json({
