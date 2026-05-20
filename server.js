@@ -445,6 +445,10 @@ app.get("/api/jobs/update-currencies", async (req, res) => {
     results.push(await updateCurrency("euro", "اليورو", eur, 2));
     results.push(await updateCurrency("Turkish", "ليرة تركية", tryRate, 3));
 
+    if (req.query.cron === "1") {
+      return res.status(200).type("text/plain").send("OK");
+    }
+
     return res.json({
       success: true,
       message: "OK",
@@ -452,6 +456,10 @@ app.get("/api/jobs/update-currencies", async (req, res) => {
       checked: results.length,
     });
   } catch (error) {
+    if (req.query.cron === "1") {
+      return res.status(500).type("text/plain").send("ERROR");
+    }
+
     return res.status(500).json({
       success: false,
       message: "Failed to update currencies",
