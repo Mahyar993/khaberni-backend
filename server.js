@@ -4,6 +4,8 @@ const admin = require("firebase-admin");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
+const axios = require("axios");
+const cheerio = require("cheerio");
 require("dotenv").config();
 
 let serviceAccount;
@@ -353,7 +355,30 @@ app.post("/api/admin/app-config", async (req, res) => {
     });
   }
 });
+app.get("/api/jobs/update-sp-today", async (req, res) => {
+  try {
+    const response = await axios.get("https://sp-today.com/currency/us-dollar", {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
 
+    const $ = cheerio.load(response.data);
+    const pageText = $("body").text().replace(/\s+/g, " ");
+
+    return res.json({
+      success: true,
+      message: "SP Today page loaded",
+      preview: pageText.substring(0, 2000),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load SP Today",
+      error: error.message,
+    });
+  }
+});
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
