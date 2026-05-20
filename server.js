@@ -356,30 +356,26 @@ app.post("/api/admin/app-config", async (req, res) => {
   }
 });
 app.get("/api/jobs/update-sp-today", async (req, res) => {
-  const response = await axios.get(
-  "https://sp-today.com/currency/us-dollar",
-  {
-  headers: {
-  "User-Agent":
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+  try {
+    const response = await axios.get(
+      "https://sp-today.com/currency/us-dollar",
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
 
-  "Accept":
-  "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
 
-  "Accept-Language":
-  "ar,en-US;q=0.9,en;q=0.8",
+          "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
 
-  "Referer":
-  "https://sp-today.com/",
+          Referer: "https://sp-today.com/",
 
-  "Origin":
-  "https://sp-today.com"
-  },
-
-  timeout: 20000
-  }
-  )
-    });
+          Origin: "https://sp-today.com",
+        },
+        timeout: 20000,
+      }
+    );
 
     const $ = cheerio.load(response.data);
     const pageText = $("body").text().replace(/\s+/g, " ");
