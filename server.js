@@ -355,42 +355,70 @@ app.post("/api/admin/app-config", async (req, res) => {
     });
   }
 });
-app.get("/api/jobs/update-sp-today", async (req, res) => {
-  let browser = null;
-
+app.get("/api/jobs/update-currencies", async (req, res) => {
   try {
-    const puppeteer = require("puppeteer-core");
-    const chromium = require("@sparticuz/chromium");
+    const response = await axios.get(
+      "https://lirascope.syria-cloud.sy/api/v1/rates/latest?currencies=USD,EUR,TRY&lang=ar",
+      {
+        timeout: 20000,
+      }
+    );
 
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-    });
+    const marketRates = response.data.marketRates || [];
 
-    const page = await browser.newPage();
+    const findRate = (currency) => {
+      return marketRates.find((item) => item.currency === currency);
+    };
 
-    await page.goto("https://sp-today.com/currency/us-dollar", {
-      waitUntil: "networkidle2",
-      timeout: 60000,
-    });
+    const usd = findRate("USD");
+    const eur = findRate("EUR");
+    const tryRate = findRate("TRY");
 
-    const text = await page.evaluate(() => document.body.innerText);
+    if (!usd || !eur || !tryRate) {
+      return res.status(400).json({
+        success: false,
+        message: "Some currency rates were not found",
+        available: marketRates.map((item) => item.currency),
+      });
+    }
 
-    await browser.close();
+    const db = admin.firestore();
+
+    const saveCurrency = async (id, title, rate, order) => {
+      await db
+        .collection("sections")
+        .doc("currencies")
+        .collection("items")
+        .doc(id)
+        .set(
+          {
+            title,
+            content: `شراء : ${rate.buy} - بيع : ${rate.sell}`,
+            order,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            source: "LiraScope",
+          },
+          { merge: true }
+        );
+    };
+
+    await saveCurrency("dollar", "الدولار", usd, 1);
+    await saveCurrency("euro", "اليورو", eur, 2);
+    await saveCurrency("Turkish", "ليرة تركية", tryRate, 3);
 
     return res.json({
       success: true,
-      preview: text.substring(0, 2000),
+      message: "Currencies updated successfully",
+      data: {
+        usd,
+        eur,
+        try: tryRate,
+      },
     });
   } catch (error) {
-    if (browser) {
-      await browser.close();
-    }
-
     return res.status(500).json({
       success: false,
+      message: "Failed to update currencies",
       error: error.message,
     });
   }

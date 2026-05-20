@@ -12,7 +12,6 @@
   "license": "ISC",
   "dependencies": {
     "@puppeteer/browsers": "^3.0.3",
-    "@sparticuz/chromium": "^148.0.0",
     "axios": "^1.16.1",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
@@ -22,8 +21,7 @@
     "express": "^5.2.1",
     "firebase-admin": "^13.10.0",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.1.1",
-    "puppeteer-core": "^25.0.4"
+    "multer": "^2.1.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
