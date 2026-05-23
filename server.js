@@ -765,7 +765,146 @@ app.get(
     }
 
 });
+app.post(
+  "/api/admin/sections",
+  verifyAdminToken,
+  async (req, res) => {
+    try {
+      const {
+        sectionId,
+        title,
+        subtitle,
+        icon,
+        color,
+        order,
+        isActive,
+      } = req.body;
 
+      if (!sectionId || !title) {
+        return res.status(400).json({
+          success: false,
+          message: "sectionId and title are required",
+        });
+      }
+
+      await admin
+        .firestore()
+        .collection("sections")
+        .doc(sectionId)
+        .set(
+          {
+            title: title || "",
+            subtitle: subtitle || "",
+            icon: icon || "",
+            color: color || "",
+            order: Number(order) || 999,
+            isActive: isActive !== false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+      await writeAdminLog("create_section", {
+        sectionId,
+        title,
+      });
+
+      return res.json({
+        success: true,
+        message: "Section saved successfully",
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to save section",
+        error: error.message,
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/admin/sections/:sectionId",
+  verifyAdminToken,
+  async (req, res) => {
+    try {
+      const { sectionId } = req.params;
+
+      const {
+        title,
+        subtitle,
+        icon,
+        color,
+        order,
+        isActive,
+      } = req.body;
+
+      await admin
+        .firestore()
+        .collection("sections")
+        .doc(sectionId)
+        .set(
+          {
+            title: title || "",
+            subtitle: subtitle || "",
+            icon: icon || "",
+            color: color || "",
+            order: Number(order) || 999,
+            isActive: isActive !== false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+      await writeAdminLog("update_section", {
+        sectionId,
+      });
+
+      return res.json({
+        success: true,
+        message: "Section updated successfully",
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to update section",
+        error: error.message,
+      });
+    }
+  }
+);
+
+app.delete(
+  "/api/admin/sections/:sectionId",
+  verifyAdminToken,
+  async (req, res) => {
+    try {
+      const { sectionId } = req.params;
+
+      await admin
+        .firestore()
+        .collection("sections")
+        .doc(sectionId)
+        .delete();
+
+      await writeAdminLog("delete_section", {
+        sectionId,
+      });
+
+      return res.json({
+        success: true,
+        message: "Section deleted successfully",
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to delete section",
+        error: error.message,
+      });
+    }
+  }
+);
 app.get(
   "/api/admin/sections/:sectionId/items",
   verifyAdminToken,
