@@ -842,7 +842,16 @@ cron.schedule(
     timezone:"Asia/Damascus"
   }
 );
+cron.schedule(
+  "*/2 * * * *",
+  async ()=>{
 
+    console.log(
+      "TEST SCHEDULER WORKING"
+    );
+
+  }
+);
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
