@@ -7,7 +7,6 @@ const cloudinary = require("cloudinary").v2;
 const axios = require("axios");
 const csv = require("csv-parser");
 const { Readable } = require("stream");
-const cheerio = require("cheerio");
 const cron = require("node-cron");
 require("dotenv").config();
 
@@ -997,6 +996,157 @@ app.delete(
 
     }
 
+});
+app.get("/api/admin/ads", verifyAdminToken, async (req, res) => {
+  try {
+    const snapshot = await admin
+      .firestore()
+      .collection("ads")
+      .orderBy("order", "asc")
+      .get();
+
+    const ads = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return res.json({
+      success: true,
+      ads,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load ads",
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/admin/ads", verifyAdminToken, async (req, res) => {
+  try {
+    const {
+      adId,
+      title,
+      description,
+      imageUrl,
+      phone,
+      order,
+      isActive,
+      isFeatured,
+    } = req.body;
+
+    if (!adId || !title || order === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "adId, title, and order are required",
+      });
+    }
+
+    await admin
+      .firestore()
+      .collection("ads")
+      .doc(adId)
+      .set(
+        {
+          title: title || "",
+          description: description || "",
+          imageUrl: imageUrl || "",
+          phone: phone || "",
+          order: Number(order) || 999,
+          isActive: isActive !== false,
+          isFeatured: isFeatured === true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    await writeAdminLog("create_ad", { adId, title });
+
+    return res.json({
+      success: true,
+      message: "Ad saved successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save ad",
+      error: error.message,
+    });
+  }
+});
+
+app.put("/api/admin/ads/:adId", verifyAdminToken, async (req, res) => {
+  try {
+    const { adId } = req.params;
+
+    const {
+      title,
+      description,
+      imageUrl,
+      phone,
+      order,
+      isActive,
+      isFeatured,
+    } = req.body;
+
+    await admin
+      .firestore()
+      .collection("ads")
+      .doc(adId)
+      .set(
+        {
+          title: title || "",
+          description: description || "",
+          imageUrl: imageUrl || "",
+          phone: phone || "",
+          order: Number(order) || 999,
+          isActive: isActive !== false,
+          isFeatured: isFeatured === true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    await writeAdminLog("update_ad", { adId });
+
+    return res.json({
+      success: true,
+      message: "Ad updated successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update ad",
+      error: error.message,
+    });
+  }
+});
+
+app.delete("/api/admin/ads/:adId", verifyAdminToken, async (req, res) => {
+  try {
+    const { adId } = req.params;
+
+    await admin
+      .firestore()
+      .collection("ads")
+      .doc(adId)
+      .delete();
+
+    await writeAdminLog("delete_ad", { adId });
+
+    return res.json({
+      success: true,
+      message: "Ad deleted successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete ad",
+      error: error.message,
+    });
+  }
 });
 app.get("/api/admin/scheduler-config", verifyAdminToken, async (req, res) => {
   try {
