@@ -726,6 +726,278 @@ app.get("/api/jobs/send-water-notifications", verifyAdminToken, async (req, res)
     });
   }
 });
+app.get(
+  "/api/admin/sections",
+  verifyAdminToken,
+  async (req, res) => {
+
+    try {
+
+      const snapshot =
+        await admin
+          .firestore()
+          .collection("sections")
+          .get();
+
+      const sections =
+        snapshot.docs.map(doc => ({
+
+          id: doc.id,
+          ...doc.data()
+
+        }));
+
+      return res.json({
+
+        success:true,
+        sections
+
+      });
+
+    } catch(error){
+
+      return res.status(500).json({
+
+        success:false,
+        error:error.message
+
+      });
+
+    }
+
+});
+
+app.get(
+  "/api/admin/sections/:sectionId/items",
+  verifyAdminToken,
+  async(req,res)=>{
+
+    try{
+
+      const snapshot =
+        await admin
+          .firestore()
+          .collection("sections")
+          .doc(req.params.sectionId)
+          .collection("items")
+          .orderBy("order","asc")
+          .get();
+
+      const items =
+        snapshot.docs.map(doc=>({
+
+          id:doc.id,
+          ...doc.data()
+
+        }));
+
+      return res.json({
+
+        success:true,
+        items
+
+      });
+
+    }catch(error){
+
+      return res.status(500).json({
+
+        success:false,
+        error:error.message
+
+      });
+
+    }
+
+});
+
+app.post(
+  "/api/admin/sections/:sectionId/items",
+  verifyAdminToken,
+  async(req,res)=>{
+
+    try{
+
+      const {
+
+        title,
+        content,
+        order,
+        icon,
+        color
+
+      } = req.body;
+
+      const docRef =
+        admin
+          .firestore()
+          .collection("sections")
+          .doc(req.params.sectionId)
+          .collection("items")
+          .doc();
+
+      await docRef.set({
+
+        title:title||"",
+        content:content||"",
+        order:Number(order)||999,
+        icon:icon||"",
+        color:color||"",
+        isActive:true,
+
+        createdAt:
+          admin.firestore.FieldValue.serverTimestamp(),
+
+        updatedAt:
+          admin.firestore.FieldValue.serverTimestamp()
+
+      });
+
+      await writeAdminLog(
+
+        "create_item",
+
+        {
+
+          section:
+            req.params.sectionId,
+
+          title
+
+        }
+
+      );
+
+      return res.json({
+
+        success:true,
+        id:docRef.id
+
+      });
+
+    }catch(error){
+
+      return res.status(500).json({
+
+        success:false,
+        error:error.message
+
+      });
+
+    }
+
+});
+
+app.put(
+  "/api/admin/sections/:sectionId/items/:itemId",
+  verifyAdminToken,
+  async(req,res)=>{
+
+    try{
+
+      await admin
+        .firestore()
+        .collection("sections")
+        .doc(req.params.sectionId)
+        .collection("items")
+        .doc(req.params.itemId)
+        .set({
+
+          ...req.body,
+
+          updatedAt:
+            admin.firestore.FieldValue.serverTimestamp()
+
+        },{
+
+          merge:true
+
+        });
+
+      await writeAdminLog(
+
+        "update_item",
+
+        {
+
+          section:
+            req.params.sectionId,
+
+          item:
+            req.params.itemId
+
+        }
+
+      );
+
+      return res.json({
+
+        success:true
+
+      });
+
+    }catch(error){
+
+      return res.status(500).json({
+
+        success:false,
+        error:error.message
+
+      });
+
+    }
+
+});
+
+app.delete(
+  "/api/admin/sections/:sectionId/items/:itemId",
+  verifyAdminToken,
+  async(req,res)=>{
+
+    try{
+
+      await admin
+        .firestore()
+        .collection("sections")
+        .doc(req.params.sectionId)
+        .collection("items")
+        .doc(req.params.itemId)
+        .delete();
+
+      await writeAdminLog(
+
+        "delete_item",
+
+        {
+
+          section:
+            req.params.sectionId,
+
+          item:
+            req.params.itemId
+
+        }
+
+      );
+
+      return res.json({
+
+        success:true
+
+      });
+
+    }catch(error){
+
+      return res.status(500).json({
+
+        success:false,
+        error:error.message
+
+      });
+
+    }
+
+});
 const PORT = process.env.PORT || 5000;
 async function runCurrenciesJob() {
 
