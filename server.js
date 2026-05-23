@@ -8,6 +8,7 @@ const axios = require("axios");
 const csv = require("csv-parser");
 const { Readable } = require("stream");
 const cheerio = require("cheerio");
+const cron = require("node-cron");
 require("dotenv").config();
 
 let serviceAccount;
@@ -33,6 +34,62 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(express.json());
+
+function verifyAdminToken(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization || "";
+
+    if (!authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+if(
+ token===
+ process.env.INTERNAL_JOB_TOKEN
+){
+
+ req.admin={
+   role:"internal"
+ };
+
+ return next();
+
+}
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (!decoded || decoded.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden",
+      });
+    }
+
+    req.admin = decoded;
+
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token",
+    });
+  }
+}
+
+async function writeAdminLog(action, details = {}) {
+  try {
+    await admin.firestore().collection("admin_logs").add({
+      action,
+      details,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Failed to write admin log:", error.message);
+  }
+}
 
 app.get("/", (req, res) => {
   res.json({
@@ -80,7 +137,7 @@ app.post("/api/admin/login", async (req, res) => {
   }
 });
 
-app.post("/api/notifications/send", async (req, res) => {
+app.post("/api/notifications/send", verifyAdminToken, async (req, res) => {
   try {
     const { title, body } = req.body;
 
@@ -102,7 +159,10 @@ app.post("/api/notifications/send", async (req, res) => {
         body,
       },
     });
-
+    await writeAdminLog("send_notification", {
+      title,
+      body,
+    });
     return res.json({
       success: true,
       message: "Notification sent successfully",
@@ -118,7 +178,7 @@ app.post("/api/notifications/send", async (req, res) => {
   }
 });
 
-app.post("/api/upload-image", upload.single("image"), async (req, res) => {
+app.post("/api/upload-image", verifyAdminToken, upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -202,7 +262,7 @@ app.post("/api/analytics/app-open", async (req, res) => {
   }
 });
 
-app.get("/api/admin/stats", async (req, res) => {
+app.get("/api/admin/stats", verifyAdminToken, async (req, res) => {
   try {
     const now = new Date();
 
@@ -316,7 +376,7 @@ app.get("/api/app-config", async (req, res) => {
   }
 });
 
-app.post("/api/admin/app-config", async (req, res) => {
+app.post("/api/admin/app-config", verifyAdminToken, async (req, res) => {
   try {
     const {
       isAppEnabled,
@@ -344,7 +404,11 @@ app.post("/api/admin/app-config", async (req, res) => {
         },
         { merge: true }
       );
-
+    await writeAdminLog("update_app_config", {
+      isAppEnabled,
+      minimumRequiredVersion,
+      latestVersion,
+    });
     return res.json({
       success: true,
       message: "App config updated successfully",
@@ -357,7 +421,7 @@ app.post("/api/admin/app-config", async (req, res) => {
     });
   }
 });
-app.get("/api/jobs/update-currencies", async (req, res) => {
+app.get("/api/jobs/update-currencies", verifyAdminToken, async (req, res) => {
   try {
     const response = await axios.get(
       "https://lirascope.syria-cloud.sy/api/v1/rates/latest?currencies=USD,EUR,TRY&lang=ar",
@@ -469,7 +533,7 @@ app.get("/api/jobs/update-currencies", async (req, res) => {
     });
   }
 });
-app.get("/api/jobs/update-daily-sheet", async (req, res) => {
+app.get("/api/jobs/update-daily-sheet", verifyAdminToken, async (req, res) => {
 
   try {
 
@@ -603,7 +667,7 @@ app.get("/api/jobs/update-daily-sheet", async (req, res) => {
   }
 
 });
-app.get("/api/jobs/send-water-notifications", async (req, res) => {
+app.get("/api/jobs/send-water-notifications", verifyAdminToken, async (req, res) => {
   try {
     const db = admin.firestore();
 
@@ -663,6 +727,121 @@ app.get("/api/jobs/send-water-notifications", async (req, res) => {
   }
 });
 const PORT = process.env.PORT || 5000;
+async function runCurrenciesJob() {
+
+  try {
+
+    console.log("Running currencies update");
+
+ await axios.get(
+   `http://localhost:${PORT}/api/jobs/update-currencies`,
+   {
+     headers: {
+       Authorization: `Bearer ${process.env.INTERNAL_JOB_TOKEN}`,
+     },
+   }
+ );
+
+  } catch(error){
+
+    console.error(
+      "Currencies scheduler error:",
+      error.message
+    );
+
+  }
+
+}
+
+async function runDailySheetJob() {
+
+  try {
+
+    console.log("Running daily sheet update");
+
+await axios.get(
+  `http://localhost:${PORT}/api/jobs/update-daily-sheet`,
+  {
+    headers: {
+      Authorization: `Bearer ${process.env.INTERNAL_JOB_TOKEN}`,
+    },
+  }
+);
+
+  } catch(error){
+
+    console.error(
+      "Daily sheet scheduler error:",
+      error.message
+    );
+
+  }
+
+}
+
+async function runWaterNotificationJob() {
+
+  try {
+
+    console.log(
+      "Running water notifications"
+    );
+
+await axios.get(
+  `http://localhost:${PORT}/api/jobs/send-water-notifications`,
+  {
+    headers: {
+      Authorization: `Bearer ${process.env.INTERNAL_JOB_TOKEN}`,
+    },
+  }
+);
+
+  } catch(error){
+
+    console.error(
+      "Water notification scheduler error:",
+      error.message
+    );
+
+  }
+
+}
+
+cron.schedule(
+  "0 6 * * *",
+  async ()=>{
+
+    await runDailySheetJob();
+
+  },
+  {
+    timezone:"Asia/Damascus"
+  }
+);
+
+cron.schedule(
+  "0 9 * * *",
+  async ()=>{
+
+    await runWaterNotificationJob();
+
+  },
+  {
+    timezone:"Asia/Damascus"
+  }
+);
+
+cron.schedule(
+  "*/30 6-18 * * *",
+  async ()=>{
+
+    await runCurrenciesJob();
+
+  },
+  {
+    timezone:"Asia/Damascus"
+  }
+);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
