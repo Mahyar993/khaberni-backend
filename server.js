@@ -1103,17 +1103,50 @@ cron.schedule(
   }
 );
 
-cron.schedule(
-  "*/30 6-18 * * *",
-  async ()=>{
+async function startCurrencyScheduler() {
 
-    await runCurrenciesJob();
+   async function execute() {
 
-  },
-  {
-    timezone:"Asia/Damascus"
-  }
-);
+     const now =
+       new Date();
+
+     const hour =
+       now.toLocaleString(
+         "en-US",
+         {
+           hour:"numeric",
+           hour12:false,
+           timeZone:"Asia/Damascus"
+         }
+       );
+
+     const currentHour =
+       Number(hour);
+
+     if(
+       currentHour >= 6 &&
+       currentHour <= 18
+     ){
+
+       await runCurrenciesJob();
+
+     }
+
+   }
+
+   await execute();
+
+   setInterval(
+
+     execute,
+
+     90 * 60 * 1000
+
+   );
+
+ }
+
+ startCurrencyScheduler();
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
