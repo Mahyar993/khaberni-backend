@@ -998,6 +998,77 @@ app.delete(
     }
 
 });
+app.get("/api/admin/scheduler-config", verifyAdminToken, async (req, res) => {
+  try {
+    const doc = await admin
+      .firestore()
+      .collection("scheduler_config")
+      .doc("main")
+      .get();
+
+    const defaultConfig = {
+      dailySheetHour: 6,
+      dailySheetMinute: 0,
+      waterNotificationHour: 9,
+      waterNotificationMinute: 0,
+      currencyIntervalMinutes: 90,
+      currencyStartHour: 6,
+      currencyEndHour: 18,
+      isDailySheetEnabled: true,
+      isWaterNotificationEnabled: true,
+      isCurrencyUpdateEnabled: true,
+    };
+
+    return res.json({
+      success: true,
+      config: doc.exists ? { ...defaultConfig, ...doc.data() } : defaultConfig,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load scheduler config",
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/admin/scheduler-config", verifyAdminToken, async (req, res) => {
+  try {
+    const config = {
+      dailySheetHour: Number(req.body.dailySheetHour) || 6,
+      dailySheetMinute: Number(req.body.dailySheetMinute) || 0,
+      waterNotificationHour: Number(req.body.waterNotificationHour) || 9,
+      waterNotificationMinute: Number(req.body.waterNotificationMinute) || 0,
+      currencyIntervalMinutes: Number(req.body.currencyIntervalMinutes) || 90,
+      currencyStartHour: Number(req.body.currencyStartHour) || 6,
+      currencyEndHour: Number(req.body.currencyEndHour) || 18,
+      isDailySheetEnabled: req.body.isDailySheetEnabled !== false,
+      isWaterNotificationEnabled: req.body.isWaterNotificationEnabled !== false,
+      isCurrencyUpdateEnabled: req.body.isCurrencyUpdateEnabled !== false,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await admin
+      .firestore()
+      .collection("scheduler_config")
+      .doc("main")
+      .set(config, { merge: true });
+
+    await writeAdminLog("update_scheduler_config", config);
+
+    return res.json({
+      success: true,
+      message: "Scheduler config updated successfully",
+      config,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update scheduler config",
+      error: error.message,
+    });
+  }
+});
 const PORT = process.env.PORT || 5000;
 async function runCurrenciesJob() {
 
@@ -1078,76 +1149,111 @@ await axios.get(
   }
 
 }
+let lastDailySheetRunKey = "";
+let lastWaterNotificationRunKey = "";
+let lastCurrencyRunTime = 0;
 
-cron.schedule(
-  "0 6 * * *",
-  async ()=>{
+async function getSchedulerConfig() {
+  const defaultConfig = {
+    dailySheetHour: 6,
+    dailySheetMinute: 0,
+    waterNotificationHour: 9,
+    waterNotificationMinute: 0,
+    currencyIntervalMinutes: 90,
+    currencyStartHour: 6,
+    currencyEndHour: 18,
+    isDailySheetEnabled: true,
+    isWaterNotificationEnabled: true,
+    isCurrencyUpdateEnabled: true,
+  };
 
-    await runDailySheetJob();
+  const doc = await admin
+    .firestore()
+    .collection("scheduler_config")
+    .doc("main")
+    .get();
 
-  },
-  {
-    timezone:"Asia/Damascus"
+  if (!doc.exists) {
+    return defaultConfig;
   }
-);
 
-cron.schedule(
-  "0 9 * * *",
-  async ()=>{
+  return {
+    ...defaultConfig,
+    ...doc.data(),
+  };
+}
 
-    await runWaterNotificationJob();
+function getDamascusNow() {
+  const now = new Date();
 
-  },
-  {
-    timezone:"Asia/Damascus"
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Damascus",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(now);
+
+  const get = (type) => parts.find((p) => p.type === type)?.value;
+
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    hour: Number(get("hour")),
+    minute: Number(get("minute")),
+    timestamp: Date.now(),
+  };
+}
+
+cron.schedule("* * * * *", async () => {
+  try {
+    const config = await getSchedulerConfig();
+    const now = getDamascusNow();
+
+    const minuteKey = `${now.date}-${now.hour}-${now.minute}`;
+
+    if (
+      config.isDailySheetEnabled &&
+      now.hour === Number(config.dailySheetHour) &&
+      now.minute === Number(config.dailySheetMinute) &&
+      lastDailySheetRunKey !== minuteKey
+    ) {
+      lastDailySheetRunKey = minuteKey;
+      await runDailySheetJob();
+    }
+
+    if (
+      config.isWaterNotificationEnabled &&
+      now.hour === Number(config.waterNotificationHour) &&
+      now.minute === Number(config.waterNotificationMinute) &&
+      lastWaterNotificationRunKey !== minuteKey
+    ) {
+      lastWaterNotificationRunKey = minuteKey;
+      await runWaterNotificationJob();
+    }
+
+    const intervalMs =
+      Number(config.currencyIntervalMinutes) * 60 * 1000;
+
+    const isCurrencyTimeAllowed =
+      now.hour >= Number(config.currencyStartHour) &&
+      now.hour <= Number(config.currencyEndHour);
+
+    if (
+      config.isCurrencyUpdateEnabled &&
+      isCurrencyTimeAllowed &&
+      now.timestamp - lastCurrencyRunTime >= intervalMs
+    ) {
+      lastCurrencyRunTime = now.timestamp;
+      await runCurrenciesJob();
+    }
+  } catch (error) {
+    console.error("Dynamic scheduler error:", error.message);
   }
-);
-
-async function startCurrencyScheduler() {
-
-   async function execute() {
-
-     const now =
-       new Date();
-
-     const hour =
-       now.toLocaleString(
-         "en-US",
-         {
-           hour:"numeric",
-           hour12:false,
-           timeZone:"Asia/Damascus"
-         }
-       );
-
-     const currentHour =
-       Number(hour);
-
-     if(
-       currentHour >= 6 &&
-       currentHour <= 18
-     ){
-
-       await runCurrenciesJob();
-
-     }
-
-   }
-
-   await execute();
-
-   setInterval(
-
-     execute,
-
-     90 * 60 * 1000
-
-   );
-
- }
-
- startCurrencyScheduler();
-
+});
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
