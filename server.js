@@ -532,6 +532,145 @@ app.get("/api/jobs/update-currencies", verifyAdminToken, async (req, res) => {
     });
   }
 });
+app.get(
+"/api/jobs/update-gold",
+verifyAdminToken,
+async(req,res)=>{
+
+ try{
+
+   const response =
+   await axios.get(
+   "https://lirascope.syria-cloud.sy/api/v1/gold/latest?lang=ar",
+   {
+     timeout:20000
+   });
+
+   const goldData =
+   response.data.data || [];
+
+   const db =
+   admin.firestore();
+
+   const updateGold =
+   async(
+      type,
+      price,
+      change24h,
+      order
+   )=>{
+
+      const docRef=
+      db
+      .collection("sections")
+      .doc("gold")
+      .collection("items")
+      .doc(type);
+
+      const oldDoc=
+      await docRef.get();
+
+      const oldContent=
+      oldDoc.exists
+      ? oldDoc.data().content || ""
+      : "";
+
+      const newContent=
+      `${price}$ / غرام`;
+
+      const changedText=
+
+      change24h>0
+      ? `⬆ ${change24h}%`
+      :
+      change24h<0
+      ? `⬇ ${Math.abs(change24h)}%`
+      :
+      "➖ 0%";
+
+      await docRef.set({
+
+         title:
+         `ذهب عيار ${type.replace("K","")}`,
+
+         content:
+         `${newContent}\n${changedText}`,
+
+         order,
+
+         priceUSD:
+         Number(price),
+
+         change24h,
+
+         updatedAt:
+         admin.firestore.FieldValue.serverTimestamp(),
+
+         source:
+         "LiraScope"
+
+      },{
+
+         merge:true
+
+      });
+
+      return oldContent!==newContent;
+
+   };
+
+   let changed=0;
+
+   for(
+     let i=0;
+     i<goldData.length;
+     i++
+   ){
+
+      const item=
+      goldData[i];
+
+      const result=
+      await updateGold(
+
+         item.type,
+         item.priceUSD,
+         item.change24h,
+         i+1
+
+      );
+
+      if(result){
+
+         changed++;
+
+      }
+
+   }
+
+   return res.json({
+
+      success:true,
+      updated:
+      goldData.length,
+
+      changed
+
+   });
+
+ }catch(error){
+
+   return res.status(500).json({
+
+      success:false,
+      error:error.message
+
+   });
+
+ }
+
+}
+);
 app.get("/api/jobs/update-daily-sheet", verifyAdminToken, async (req, res) => {
 
   try {
@@ -1384,7 +1523,44 @@ async function runCurrenciesJob() {
   }
 
 }
+async function runGoldJob(){
 
+ try{
+
+   console.log(
+   "Running gold update"
+   );
+
+   await axios.get(
+
+   `http://localhost:${PORT}/api/jobs/update-gold`,
+
+   {
+
+    headers:{
+
+     Authorization:
+     `Bearer ${process.env.INTERNAL_JOB_TOKEN}`
+
+    }
+
+   }
+
+   );
+
+ }catch(error){
+
+   console.error(
+
+   "Gold scheduler error:",
+
+   error.message
+
+   );
+
+ }
+
+}
 async function runDailySheetJob() {
 
   try {
@@ -1559,6 +1735,7 @@ if (
 ) {
   lastCurrencyRunTime = currencyRunKey;
   await runCurrenciesJob();
+  await runGoldJob();
 }
   } catch (error) {
     console.error("Dynamic scheduler error:", error.message);
