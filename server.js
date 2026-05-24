@@ -513,7 +513,14 @@ app.get("/api/jobs/update-currencies", verifyAdminToken, async (req, res) => {
     if (req.query.cron === "1") {
       return res.status(200).type("text/plain").send("OK");
     }
-
+await axios.get(
+  `http://localhost:${PORT}/api/jobs/update-gold`,
+  {
+    headers: {
+      Authorization: `Bearer ${process.env.INTERNAL_JOB_TOKEN}`,
+    },
+  }
+);
     return res.json({
       success: true,
       message: "OK",
