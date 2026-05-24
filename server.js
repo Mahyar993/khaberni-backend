@@ -560,10 +560,10 @@ app.get("/api/jobs/update-daily-sheet", verifyAdminToken, async (req, res) => {
 
     });
 
-    const today =
-      new Date()
-        .toISOString()
-        .split("T")[0];
+const today =
+  new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Damascus",
+  });
 
     const todayRows =
       rows.filter(row => {
@@ -1301,7 +1301,7 @@ app.get("/api/admin/scheduler-config", verifyAdminToken, async (req, res) => {
       waterNotificationHour: 9,
       waterNotificationMinute: 0,
       currencyIntervalMinutes: 90,
-      currencyStartHour: 6,
+      currencyStartHour: 9,
       currencyEndHour: 18,
       isDailySheetEnabled: true,
       isWaterNotificationEnabled: true,
@@ -1329,7 +1329,7 @@ app.post("/api/admin/scheduler-config", verifyAdminToken, async (req, res) => {
       waterNotificationHour: Number(req.body.waterNotificationHour) || 9,
       waterNotificationMinute: Number(req.body.waterNotificationMinute) || 0,
       currencyIntervalMinutes: Number(req.body.currencyIntervalMinutes) || 90,
-      currencyStartHour: Number(req.body.currencyStartHour) || 6,
+      currencyStartHour: Number(req.body.currencyStartHour) || 9,
       currencyEndHour: Number(req.body.currencyEndHour) || 18,
       isDailySheetEnabled: req.body.isDailySheetEnabled !== false,
       isWaterNotificationEnabled: req.body.isWaterNotificationEnabled !== false,
@@ -1440,7 +1440,7 @@ await axios.get(
 }
 let lastDailySheetRunKey = "";
 let lastWaterNotificationRunKey = "";
-let lastCurrencyRunTime = 0;
+let lastCurrencyRunTime = "";
 
 async function getSchedulerConfig() {
   const defaultConfig = {
@@ -1449,7 +1449,7 @@ async function getSchedulerConfig() {
     waterNotificationHour: 9,
     waterNotificationMinute: 0,
     currencyIntervalMinutes: 90,
-    currencyStartHour: 6,
+    currencyStartHour: 9,
     currencyEndHour: 18,
     isDailySheetEnabled: true,
     isWaterNotificationEnabled: true,
@@ -1524,21 +1524,42 @@ cron.schedule("* * * * *", async () => {
       await runWaterNotificationJob();
     }
 
-    const intervalMs =
-      Number(config.currencyIntervalMinutes) * 60 * 1000;
+const currencyStartHour = Number(config.currencyStartHour);
+const currencyEndHour = Number(config.currencyEndHour);
+const currencyIntervalMinutes = Number(config.currencyIntervalMinutes);
 
-    const isCurrencyTimeAllowed =
-      now.hour >= Number(config.currencyStartHour) &&
-      now.hour <= Number(config.currencyEndHour);
+const nowTotalMinutes =
+  now.hour * 60 + now.minute;
 
-    if (
-      config.isCurrencyUpdateEnabled &&
-      isCurrencyTimeAllowed &&
-      now.timestamp - lastCurrencyRunTime >= intervalMs
-    ) {
-      lastCurrencyRunTime = now.timestamp;
-      await runCurrenciesJob();
-    }
+const startTotalMinutes =
+  currencyStartHour * 60;
+
+const endTotalMinutes =
+  currencyEndHour * 60;
+
+const minutesFromStart =
+  nowTotalMinutes - startTotalMinutes;
+
+const isCurrencyTimeAllowed =
+  nowTotalMinutes >= startTotalMinutes &&
+  nowTotalMinutes <= endTotalMinutes;
+
+const isCurrencyExactInterval =
+  minutesFromStart >= 0 &&
+  minutesFromStart % currencyIntervalMinutes === 0;
+
+const currencyRunKey =
+  `${now.date}-${now.hour}-${now.minute}`;
+
+if (
+  config.isCurrencyUpdateEnabled &&
+  isCurrencyTimeAllowed &&
+  isCurrencyExactInterval &&
+  lastCurrencyRunTime !== currencyRunKey
+) {
+  lastCurrencyRunTime = currencyRunKey;
+  await runCurrenciesJob();
+}
   } catch (error) {
     console.error("Dynamic scheduler error:", error.message);
   }
