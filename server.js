@@ -21,17 +21,27 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
+
+app.use(cors());
+app.use(express.json());
+
 console.log("Firebase Project:", serviceAccount.project_id);
 console.log("Firebase Email:", serviceAccount.client_email);
-console.log("Firebase Key ID:", serviceAccount.private_key_id);
+
 app.get("/api/debug/firebase-test", async (req, res) => {
   try {
     const db = admin.firestore();
 
-    const readTest = await db
-      .collection("sections")
-      .limit(1)
-      .get();
+    const readTest = await db.collection("sections").limit(1).get();
 
     await db.collection("debug_test").doc("render").set({
       ok: true,
@@ -56,17 +66,6 @@ app.get("/api/debug/firebase-test", async (req, res) => {
     });
   }
 });
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
-
-app.use(cors());
-app.use(express.json());
 
 function verifyAdminToken(req, res, next) {
   try {
