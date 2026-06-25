@@ -21,7 +21,41 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
+console.log("Firebase Project:", serviceAccount.project_id);
+console.log("Firebase Email:", serviceAccount.client_email);
+console.log("Firebase Key ID:", serviceAccount.private_key_id);
+app.get("/api/debug/firebase-test", async (req, res) => {
+  try {
+    const db = admin.firestore();
 
+    const readTest = await db
+      .collection("sections")
+      .limit(1)
+      .get();
+
+    await db.collection("debug_test").doc("render").set({
+      ok: true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      project: serviceAccount.project_id,
+      email: serviceAccount.client_email,
+      readCount: readTest.size,
+      message: "Firebase read/write OK",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      project: serviceAccount.project_id,
+      email: serviceAccount.client_email,
+      code: error.code,
+      message: error.message,
+      details: error.details || null,
+    });
+  }
+});
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
