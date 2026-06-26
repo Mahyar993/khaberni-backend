@@ -12,14 +12,15 @@ require("dotenv").config();
 
 let serviceAccount;
 
-if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  console.log("Firebase Project:", serviceAccount.project_id);
+if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+  throw new Error("FIREBASE_SERVICE_ACCOUNT is missing");
+}
+
+serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
+console.log("Firebase Project:", serviceAccount.project_id);
 console.log("Firebase Email:", serviceAccount.client_email);
 console.log("Firebase Key ID:", serviceAccount.private_key_id);
-} else {
-  serviceAccount = require("./firebase-service-account.json");
-}
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
