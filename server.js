@@ -24,7 +24,9 @@ console.log("Firebase Key ID:", serviceAccount.private_key_id);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
-
+admin.firestore().settings({
+  preferRest: true
+});
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
