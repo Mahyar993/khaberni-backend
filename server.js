@@ -529,115 +529,253 @@ app.post("/api/admin/app-config", verifyAdminToken, async (req, res) => {
       error: error.message,
     });
   }
-});
+});async function updateCurrencyInFirestore(db, id, title, buy, sell, order, source) {
+  const docRef = db
+    .collection("sections")
+    .doc("currencies")
+    .collection("items")
+    .doc(id);
+
+  const oldDoc = await docRef.get();
+  const oldContent = oldDoc.exists ? oldDoc.data().content || "" : "";
+
+  const newContent = `شراء : ${buy} - بيع : ${sell}`;
+  const hasChanged = oldContent !== newContent;
+
+  await docRef.set(
+    {
+      title,
+      content: newContent,
+      order,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastCheckedAt: admin.firestore.FieldValue.serverTimestamp(),
+      source,
+      buy,
+      sell,
+    },
+    { merge: true }
+  );
+
+  if (hasChanged) {
+    await admin.messaging().send({
+      topic: "all",
+      notification: {
+        title,
+        body: `تحديث جديد للأسعار:\nشراء : ${buy} - بيع : ${sell}`,
+      },
+      data: {
+        title,
+        body: `تحديث جديد للأسعار:\nشراء : ${buy} - بيع : ${sell}`,
+      },
+    });
+  }
+
+  return {
+    id,
+    title,
+    buy,
+    sell,
+    hasChanged,
+    source,
+  };
+}
+
+async function updateCurrenciesFromTelegram() {
+  const db = admin.firestore();
+
+  const latestDoc = await db
+    .collection("telegram_currency_messages")
+    .doc("latest")
+    .get();
+
+  if (!latestDoc.exists) {
+    throw new Error("No Telegram currency message found");
+  }
+
+  const parsed = latestDoc.data().parsed;
+
+  if (!parsed || !parsed.dollar || !parsed.euro || !parsed.Turkish) {
+    throw new Error("Invalid Telegram parsed currency data");
+  }
+
+  const results = [];
+
+  results.push(
+    await updateCurrencyInFirestore(
+      db,
+      "dollar",
+      "الدولار",
+      parsed.dollar.buy,
+      parsed.dollar.sell,
+      1,
+      "Telegram"
+    )
+  );
+
+  results.push(
+    await updateCurrencyInFirestore(
+      db,
+      "euro",
+      "اليورو",
+      parsed.euro.buy,
+      parsed.euro.sell,
+      2,
+      "Telegram"
+    )
+  );
+
+  results.push(
+    await updateCurrencyInFirestore(
+      db,
+      "Turkish",
+      "ليرة تركية",
+      parsed.Turkish.buy,
+      parsed.Turkish.sell,
+      3,
+      "Telegram"
+    )
+  );
+
+  return results;
+}
+
+async function updateCurrenciesFromLiraScope() {
+  const response = await axios.get(
+    "https://lirascope.syria-cloud.sy/api/v1/rates/latest?currencies=USD,EUR,TRY&lang=ar",
+    { timeout: 20000 }
+  );
+
+  const marketRates = response.data.marketRates || [];
+
+  const findRate = (currency) => {
+    return marketRates.find((item) => item.currency === currency);
+  };
+
+  const multiplyRate = (value) => {
+    return Math.round(Number(value) * 100);
+  };
+
+  const usd = findRate("USD");
+  const eur = findRate("EUR");
+  const tryRate = findRate("TRY");
+
+  if (!usd || !eur || !tryRate) {
+    throw new Error("Some currency rates were not found in LiraScope");
+  }
+
+  const db = admin.firestore();
+
+  const results = [];
+
+  results.push(
+    await updateCurrencyInFirestore(
+      db,
+      "dollar",
+      "الدولار",
+      multiplyRate(usd.buy),
+      multiplyRate(usd.sell),
+      1,
+      "LiraScope"
+    )
+  );
+
+  results.push(
+    await updateCurrencyInFirestore(
+      db,
+      "euro",
+      "اليورو",
+      multiplyRate(eur.buy),
+      multiplyRate(eur.sell),
+      2,
+      "LiraScope"
+    )
+  );
+
+  results.push(
+    await updateCurrencyInFirestore(
+      db,
+      "Turkish",
+      "ليرة تركية",
+      multiplyRate(tryRate.buy),
+      multiplyRate(tryRate.sell),
+      3,
+      "LiraScope"
+    )
+  );
+
+  return results;
+}
+
 app.get("/api/jobs/update-currencies", verifyAdminToken, async (req, res) => {
   try {
-    const response = await axios.get(
-      "https://lirascope.syria-cloud.sy/api/v1/rates/latest?currencies=USD,EUR,TRY&lang=ar",
-      { timeout: 20000 }
-    );
+    const configDoc = await admin
+      .firestore()
+      .collection("scheduler_config")
+      .doc("main")
+      .get();
 
-    const marketRates = response.data.marketRates || [];
+    const config = configDoc.exists ? configDoc.data() : {};
 
-    const findRate = (currency) => {
-      return marketRates.find((item) => item.currency === currency);
-    };
+    const telegramFallbackEnabled =
+      config.telegramFallbackEnabled !== false;
 
-    const multiplyRate = (value) => {
-      return Math.round(Number(value) * 100);
-    };
+    const telegramPrimarySource =
+      config.telegramPrimarySource === true;
 
-    const usd = findRate("USD");
-    const eur = findRate("EUR");
-    const tryRate = findRate("TRY");
+    let source = "LiraScope";
+    let results = [];
 
-    if (!usd || !eur || !tryRate) {
-      return res.status(400).json({
-        success: false,
-        message: "Some currency rates were not found",
-        available: marketRates.map((item) => item.currency),
-      });
+    if (telegramPrimarySource) {
+      source = "Telegram";
+      results = await updateCurrenciesFromTelegram();
+    } else {
+      try {
+        results = await updateCurrenciesFromLiraScope();
+      } catch (liraError) {
+        console.error("LiraScope failed:", liraError.message);
+
+        if (!telegramFallbackEnabled) {
+          throw liraError;
+        }
+
+        source = "Telegram";
+        results = await updateCurrenciesFromTelegram();
+      }
     }
 
-    const db = admin.firestore();
-
-    const updateCurrency = async (id, title, rate, order) => {
-      const buy = multiplyRate(rate.buy);
-      const sell = multiplyRate(rate.sell);
-
-      const docRef = db
-        .collection("sections")
-        .doc("currencies")
-        .collection("items")
-        .doc(id);
-
-      const oldDoc = await docRef.get();
-      const oldContent = oldDoc.exists ? oldDoc.data().content || "" : "";
-
-      const newContent = `شراء : ${buy} - بيع : ${sell}`;
-      const hasChanged = oldContent !== newContent;
-
-      await docRef.set(
-        {
-          title,
-          content: newContent,
-          order,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          lastCheckedAt: admin.firestore.FieldValue.serverTimestamp(),
-          source: "LiraScope",
-          buy,
-          sell,
-        },
-        { merge: true }
-      );
-
-      if (hasChanged) {
-        await admin.messaging().send({
-          topic: "all",
-          notification: {
-            title: title,
-            body: `تحديث جديد للأسعار:\nشراء : ${buy} - بيع : ${sell}`,
-          },
-          data: {
-            title: title,
-            body: `تحديث جديد للأسعار:\nشراء : ${buy} - بيع : ${sell}`,
-          },
-        });
-      }
-
-      return {
-        id,
-        title,
-        buy,
-        sell,
-        hasChanged,
-      };
-    };
-
-    const results = [];
-
-    results.push(await updateCurrency("dollar", "الدولار", usd, 1));
-    results.push(await updateCurrency("euro", "اليورو", eur, 2));
-    results.push(await updateCurrency("Turkish", "ليرة تركية", tryRate, 3));
+    await admin.firestore().collection("scheduler_status").doc("currencies").set(
+      {
+        lastSource: source,
+        lastSuccessAt: admin.firestore.FieldValue.serverTimestamp(),
+        changed: results.filter((item) => item.hasChanged).length,
+        checked: results.length,
+        lastError: "",
+      },
+      { merge: true }
+    );
 
     if (req.query.cron === "1") {
       return res.status(200).type("text/plain").send("OK");
     }
-await axios.get(
-  `http://localhost:${PORT}/api/jobs/update-gold`,
-  {
-    headers: {
-      Authorization: `Bearer ${process.env.INTERNAL_JOB_TOKEN}`,
-    },
-  }
-);
+
     return res.json({
       success: true,
-      message: "OK",
+      source,
       changed: results.filter((item) => item.hasChanged).length,
       checked: results.length,
+      results,
     });
   } catch (error) {
+    console.error("Currency update error:", error.message);
+
+    await admin.firestore().collection("scheduler_status").doc("currencies").set(
+      {
+        lastError: error.message,
+        lastFailedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
     if (req.query.cron === "1") {
       return res.status(500).type("text/plain").send("ERROR");
     }
