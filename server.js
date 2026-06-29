@@ -123,6 +123,91 @@ app.get("/test-firestore", async (req, res) => {
     });
   }
 });
+function normalizeArabicNumber(value) {
+  if (!value) return null;
+
+  return Number(
+    value
+      .toString()
+      .replace(/,/g, ".")
+      .replace(/،/g, ".")
+      .replace(/[^\d.]/g, "")
+  );
+}
+
+function extractCurrencyFromBlock(text, keyword) {
+  const regex = new RegExp(
+    `${keyword}[\\s\\S]*?الشراء\\*?\\s*([\\d،,.]+)[\\s\\S]*?المبيع\\*?\\s*([\\d،,.]+)`,
+    "i"
+  );
+
+  const match = text.match(regex);
+
+  if (!match) return null;
+
+  return {
+    buy: normalizeArabicNumber(match[1]),
+    sell: normalizeArabicNumber(match[2]),
+  };
+}
+
+function parseTelegramCurrencyMessage(text) {
+  const usd = extractCurrencyFromBlock(text, "الدولار");
+  const tryRate = extractCurrencyFromBlock(text, "التركي");
+  const eur = extractCurrencyFromBlock(text, "اليورو");
+
+  if (!usd || !tryRate || !eur) {
+    throw new Error("Could not extract all required currency rates");
+  }
+
+  return {
+    dollar: usd,
+    Turkish: tryRate,
+    euro: eur,
+  };
+}
+
+app.post("/api/telegram/webhook", async (req, res) => {
+  try {
+    const message = req.body.message;
+
+    if (!message || !message.text) {
+      return res.json({ success: true, ignored: true });
+    }
+
+    const chatId = String(message.chat.id);
+
+    if (chatId !== String(process.env.TELEGRAM_ALLOWED_CHAT_ID)) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized chat",
+      });
+    }
+
+    const text = message.text;
+    const parsed = parseTelegramCurrencyMessage(text);
+
+    await admin.firestore().collection("telegram_currency_messages").doc("latest").set({
+      text,
+      parsed,
+      chatId,
+      messageId: message.message_id,
+      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      parsed,
+    });
+  } catch (error) {
+    console.error("Telegram webhook error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
 app.post("/api/admin/login", async (req, res) => {
   try {
     const { password } = req.body;
