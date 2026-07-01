@@ -823,15 +823,28 @@ async(req,res)=>{
 
  try{
 
-   const response =
-   await axios.get(
-   "https://lirascope.syria-cloud.sy/api/v1/gold/latest?lang=ar",
-   {
-     timeout:20000
-   });
+const response = await axios.get(
+`https://lirascope.syria-cloud.sy/api/v1/gold/latest?lang=ar&t=${Date.now()}`,
+{
+    timeout: 20000,
 
-   const goldData =
-   response.data.data || [];
+    httpsAgent: new https.Agent({
+        rejectUnauthorized: false,
+    }),
+
+    headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+        "User-Agent": "Mozilla/5.0 KhaberniBackend/1.0",
+    },
+}
+);
+
+const goldData =
+response.data.data ||
+response.data.gold ||
+[];
 
    const db =
    admin.firestore();
