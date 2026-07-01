@@ -594,7 +594,21 @@ async function updateCurrenciesFromTelegram() {
   }
 
   const parsed = latestDoc.data().parsed;
+const receivedAt = latestDoc.data().receivedAt?.toDate?.();
 
+if (!receivedAt) {
+  throw new Error("Telegram message date not found");
+}
+
+const ageHours =
+  (Date.now() - receivedAt.getTime()) / (1000 * 60 * 60);
+
+if (ageHours > 3) {
+  throw new Error(
+    `Telegram message is too old (${ageHours.toFixed(1)} hours)`
+  );
+}
+  
   if (!parsed || !parsed.dollar || !parsed.euro || !parsed.Turkish) {
     throw new Error("Invalid Telegram parsed currency data");
   }
