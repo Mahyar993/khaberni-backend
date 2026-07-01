@@ -8,6 +8,7 @@ const axios = require("axios");
 const csv = require("csv-parser");
 const { Readable } = require("stream");
 const cron = require("node-cron");
+const https = require("https");
 require("dotenv").config();
 
 let serviceAccount;
@@ -641,12 +642,26 @@ async function updateCurrenciesFromTelegram() {
 
 async function updateCurrenciesFromLiraScope() {
   const response = await axios.get(
-    "https://lirascope.syria-cloud.sy/api/v1/rates/latest?currencies=USD,EUR,TRY&lang=ar",
-    { timeout: 20000 }
-  );
+  `https://lirascope.syria-cloud.sy/api/v1/rates/latest?currencies=USD,EUR,TRY&lang=ar&t=${Date.now()}`,
+  {
+    timeout: 20000,
+    httpsAgent: new https.Agent({
+      rejectUnauthorized: false,
+    }),
+    headers: {
+      Accept: "application/json",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+      "User-Agent": "Mozilla/5.0 KhaberniBackend/1.0",
+    },
+  }
+);
 
-  const marketRates = response.data.marketRates || [];
-
+const marketRates =
+  response.data.effectiveRates ||
+  response.data.marketRates ||
+  [];
+  
   const findRate = (currency) => {
     return marketRates.find((item) => item.currency === currency);
   };
